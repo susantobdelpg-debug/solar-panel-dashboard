@@ -289,7 +289,7 @@ def load_location_data(lat: float, lon: float) -> tuple[pd.DataFrame, str, bool,
     """Return (dataframe, timezone_str, used_mock_data, error_message)."""
     error_msg = ""
     try:
-        payload = fetch_solar_weather(lat, lon)
+        payload = fetch_solar_weather(lat, lon, past_days=PAST_DAYS, forecast_days=FORECAST_DAYS)
         df = weather_to_dataframe(payload)
         if df.empty:
             raise ValueError("Respons Open-Meteo kosong")
@@ -298,15 +298,22 @@ def load_location_data(lat: float, lon: float) -> tuple[pd.DataFrame, str, bool,
     except requests.exceptions.Timeout as e:
         import logging
         logging.error(f"Timeout saat mengambil data cuaca ({lat}, {lon}): {e}", exc_info=True)
-        error_msg = f"Timeout Error: {e}"
+        error_msg = "Timeout Error - Koneksi ke server cuaca lambat atau terputus."
     except requests.exceptions.ConnectionError as e:
         import logging
         logging.error(f"Koneksi gagal saat mengambil data cuaca ({lat}, {lon}): {e}", exc_info=True)
-        error_msg = f"Connection Error: {e}"
+        error_msg = "Connection Error - Gagal terhubung ke internet atau server Open-Meteo."
     except requests.exceptions.HTTPError as e:
         import logging
         logging.error(f"HTTP error saat mengambil data cuaca ({lat}, {lon}): {e}", exc_info=True)
-        error_msg = f"HTTP Error: {e}"
+        status_code = e.response.status_code if e.response is not None else None
+        if status_code == 429:
+            error_msg = (
+                "Rate Limit Error (HTTP 429) - Terlalu banyak permintaan ke Open-Meteo API dari server cloud ini. "
+                "Silakan tunggu beberapa menit sebelum menekan 'Refresh data'."
+            )
+        else:
+            error_msg = f"HTTP Error {status_code}: {e}"
     except ValueError as e:
         import logging
         logging.error(f"Error parsing data/JSON dari Open-Meteo ({lat}, {lon}): {e}", exc_info=True)

@@ -38,20 +38,37 @@ def fetch_solar_weather(lat: float, lon: float, past_days: int = PAST_DAYS, fore
         "timezone": "auto",
     }
     max_retries = 3
-    backoff_factor = 2.0  # Jeda waktu bertambah: 2s, 4s, 6s...
 
     for attempt in range(1, max_retries + 1):
         try:
             response = requests.get(OPEN_METEO_FORECAST_URL, params=params, timeout=30)
             response.raise_for_status()
             return response.json()
+        except requests.exceptions.HTTPError as e:
+            status_code = e.response.status_code if e.response is not None else None
+            if status_code == 429:
+                sleep_time = 2 ** attempt  # 2s, 4s, 8s
+                logger.warning(
+                    f"Percobaan {attempt}/{max_retries} mendapati Rate Limit (429). "
+                    f"Menunggu {sleep_time} detik sebelum mencoba lagi..."
+                )
+                if attempt == max_retries:
+                    raise
+                time.sleep(sleep_time)
+            else:
+                logger.warning(
+                    f"Percobaan {attempt}/{max_retries} mendapati HTTP Error ({status_code}): {e}."
+                )
+                if attempt == max_retries:
+                    raise
+                time.sleep(2 * attempt)
         except (requests.exceptions.RequestException, ValueError) as e:
             logger.warning(
                 f"Percobaan {attempt}/{max_retries} mengambil data cuaca ({lat}, {lon}) gagal: {type(e).__name__} - {e}"
             )
             if attempt == max_retries:
                 raise
-            time.sleep(backoff_factor * attempt)
+            time.sleep(2 * attempt)
 
 
 def weather_to_dataframe(payload: dict[str, Any]) -> pd.DataFrame:

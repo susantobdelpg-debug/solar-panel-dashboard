@@ -2,6 +2,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+import requests
 
 import folium
 from streamlit_folium import st_folium
@@ -284,18 +285,39 @@ def render_comparison(all_locations_df: pd.DataFrame) -> None:
     st.plotly_chart(bar_fig, use_container_width=True)
 
 
-def load_location_data(lat: float, lon: float) -> tuple[pd.DataFrame, str, bool]:
-    """Return (dataframe, timezone_str, used_mock_data)."""
+def load_location_data(lat: float, lon: float) -> tuple[pd.DataFrame, str, bool, str]:
+    """Return (dataframe, timezone_str, used_mock_data, error_message)."""
+    error_msg = ""
     try:
         payload = fetch_solar_weather(lat, lon)
         df = weather_to_dataframe(payload)
         if df.empty:
             raise ValueError("Respons Open-Meteo kosong")
         tz = payload.get("timezone", "Asia/Jakarta")
-        return df, tz, False
-    except Exception:
-        tz = "Asia/Jakarta" if lon < 115.0 else "Asia/Makassar"
-        return generate_mock_weather(), tz, True
+        return df, tz, False, ""
+    except requests.exceptions.Timeout as e:
+        import logging
+        logging.error(f"Timeout saat mengambil data cuaca ({lat}, {lon}): {e}", exc_info=True)
+        error_msg = f"Timeout Error: {e}"
+    except requests.exceptions.ConnectionError as e:
+        import logging
+        logging.error(f"Koneksi gagal saat mengambil data cuaca ({lat}, {lon}): {e}", exc_info=True)
+        error_msg = f"Connection Error: {e}"
+    except requests.exceptions.HTTPError as e:
+        import logging
+        logging.error(f"HTTP error saat mengambil data cuaca ({lat}, {lon}): {e}", exc_info=True)
+        error_msg = f"HTTP Error: {e}"
+    except ValueError as e:
+        import logging
+        logging.error(f"Error parsing data/JSON dari Open-Meteo ({lat}, {lon}): {e}", exc_info=True)
+        error_msg = f"Value/JSON Error: {e}"
+    except Exception as e:
+        import logging
+        logging.error(f"Error tidak terduga saat mengambil data cuaca ({lat}, {lon}): {e}", exc_info=True)
+        error_msg = f"Unexpected Error ({type(e).__name__}): {e}"
+
+    tz = "Asia/Jakarta" if lon < 115.0 else "Asia/Makassar"
+    return generate_mock_weather(), tz, True, error_msg
 
 
 # Initialize session state for manual and map selection coordinates if not present
@@ -353,7 +375,7 @@ with st.sidebar:
 if refresh_clicked:
     fetch_solar_weather.clear()
 
-raw_df, timezone_str, used_mock = load_location_data(lat, lon)
+raw_df, timezone_str, used_mock, error_msg = load_location_data(lat, lon)
 
 # Reactively update panel tilt/azimuth defaults when latitude changes
 if "last_lat" not in st.session_state:
@@ -521,10 +543,11 @@ if location_mode == "Pilih di peta":
             st.rerun()
 
 if used_mock:
+    error_details = f"<br/><code style='color: #991b1b; font-size: 0.85rem;'>Detail error: {error_msg}</code>" if error_msg else ""
     st.markdown(
-        '<div class="mock-banner">\u26a0\ufe0f Tidak dapat menjangkau Open-Meteo API - menampilkan '
-        '<b>data simulasi</b> agar dashboard tetap dapat didemokan. Angka di bawah ini BUKAN data cuaca nyata. '
-        'Jalankan aplikasi dengan akses internet ke api.open-meteo.com untuk data aktual.</div>',
+        f'<div class="mock-banner">\u26a0\ufe0f Tidak dapat menjangkau Open-Meteo API - menampilkan '
+        f'<b>data simulasi</b> agar dashboard tetap dapat didemokan. Angka di bawah ini BUKAN data cuaca nyata. '
+        f'Jalankan aplikasi dengan akses internet ke api.open-meteo.com untuk data aktual.{error_details}</div>',
         unsafe_allow_html=True,
     )
 
@@ -611,7 +634,7 @@ if show_comparison:
         all_dfs = {}
         any_mock = False
         for name, meta in LOCATIONS.items():
-            df_loc, tz_loc, mock_flag = load_location_data(meta["lat"], meta["lon"])
+            df_loc, tz_loc, mock_flag, _ = load_location_data(meta["lat"], meta["lon"])
             
             # Apply date range filtering to other locations
             if isinstance(selected_dates, tuple) and len(selected_dates) == 2:

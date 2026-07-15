@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from typing import Any
 
+import time
+import logging
 import numpy as np
 import pandas as pd
 import requests
 import streamlit as st
+
+logger = logging.getLogger(__name__)
 
 from utils.config import (
     FORECAST_DAYS,
@@ -33,9 +37,21 @@ def fetch_solar_weather(lat: float, lon: float, past_days: int = PAST_DAYS, fore
         "forecast_days": forecast_days,
         "timezone": "auto",
     }
-    response = requests.get(OPEN_METEO_FORECAST_URL, params=params, timeout=30)
-    response.raise_for_status()
-    return response.json()
+    max_retries = 3
+    backoff_factor = 2.0  # Jeda waktu bertambah: 2s, 4s, 6s...
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = requests.get(OPEN_METEO_FORECAST_URL, params=params, timeout=30)
+            response.raise_for_status()
+            return response.json()
+        except (requests.exceptions.RequestException, ValueError) as e:
+            logger.warning(
+                f"Percobaan {attempt}/{max_retries} mengambil data cuaca ({lat}, {lon}) gagal: {type(e).__name__} - {e}"
+            )
+            if attempt == max_retries:
+                raise
+            time.sleep(backoff_factor * attempt)
 
 
 def weather_to_dataframe(payload: dict[str, Any]) -> pd.DataFrame:

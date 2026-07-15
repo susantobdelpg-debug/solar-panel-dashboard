@@ -1,0 +1,10 @@
+.git
+.github
+__pycache__
+*.pyc
+.pytest_cache
+tests/
+scratch/
+screenshots/
+venv/
+.streamlit/config.toml

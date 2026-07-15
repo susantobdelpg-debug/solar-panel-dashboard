@@ -1,0 +1,33 @@
+# Python cache and temporary files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Virtual environment folders
+venv/
+.venv/
+env/
+ENV/
+
+# Local databases and SQLite caches
+*.sqlite
+*.db
+
+# Streamlit secrets (NEVER push secrets.toml to GitHub)
+.streamlit/secrets.toml
+
+# PyInstaller build / package artifacts
+build/
+dist/
+*.spec
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+.env.local
